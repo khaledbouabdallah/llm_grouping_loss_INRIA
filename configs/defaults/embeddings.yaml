@@ -1,9 +1,0 @@
-# TF-IDF Embedding Defaults
-method: "tfidf"
-params:
-  max_features: 1000
-  ngram_range: [1, 2]
-  min_df: 2
-  max_df: 0.95
-  use_svd: false
-  n_components: 100

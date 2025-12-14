@@ -1,9 +1,0 @@
-# LLM Defaults
-model_name: "gpt2"
-params:
-  device: "auto"
-  load_in_4bit: false
-  load_in_8bit: false
-confidence_method: "logits"
-batch_size: 8
-max_new_tokens: 50
