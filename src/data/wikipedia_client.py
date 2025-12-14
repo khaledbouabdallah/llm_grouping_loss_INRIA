@@ -1,17 +1,19 @@
 """
-Wikipedia client with rate limiting and error handling
+Wikipedia client with rate limiting, multilingual support, and metadata extraction
 """
 
 import wikipedia
+import requests
 import time
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class WikipediaClient:
-    """Client for fetching Wikipedia articles with rate limiting"""
+    """Client for fetching Wikipedia articles with rate limiting and metadata extraction"""
 
     def __init__(self, language: str = "en", rate_limit_delay: float = 0.1):
         """
@@ -35,10 +37,10 @@ class WikipediaClient:
         self, entity_name: str, auto_suggest: bool = True, max_retries: int = 3
     ) -> Optional[Dict]:
         """
-        Get Wikipedia page content
+        Get Wikipedia page content with metadata
 
         Returns:
-            Dict with 'title', 'content', 'url' or None if not found
+            Dict with 'title', 'content', 'url', 'summary', 'metadata' or None if not found
         """
         self._rate_limit()
 
@@ -46,15 +48,21 @@ class WikipediaClient:
             try:
                 page = wikipedia.page(entity_name, auto_suggest=auto_suggest)
 
+                # Extract metadata
+                metadata = self._extract_metadata(
+                    page.content, page.title, page.summary
+                )
+
                 result = {
                     "title": page.title,
                     "content": page.content,
                     "url": page.url,
                     "summary": page.summary,
+                    "metadata": metadata,
                 }
 
                 logger.info(
-                    f"Fetched Wikipedia page: {page.title} ({len(page.content)} chars)"
+                    f"Fetched Wikipedia page: {page.title} ({metadata['text_length_chars']} chars)"
                 )
                 return result
 
@@ -65,11 +73,16 @@ class WikipediaClient:
                 if e.options:
                     try:
                         page = wikipedia.page(e.options[0], auto_suggest=False)
+                        metadata = self._extract_metadata(
+                            page.content, page.title, page.summary
+                        )
+
                         result = {
                             "title": page.title,
                             "content": page.content,
                             "url": page.url,
                             "summary": page.summary,
+                            "metadata": metadata,
                             "disambiguation": True,
                             "chosen_option": e.options[0],
                         }
@@ -97,6 +110,134 @@ class WikipediaClient:
                     return None
 
         return None
+
+    def _extract_metadata(self, content: str, title: str, summary: str) -> Dict:
+        """
+        Extract metadata from Wikipedia article content
+
+        Returns dict with:
+        - text_length_chars
+        - text_length_words
+        - summary_length
+        - num_sections (approximate)
+        - num_references (citation count)
+        """
+        metadata = {
+            "text_length_chars": len(content),
+            "text_length_words": len(content.split()),
+            "summary_length": len(summary),
+            "num_sections": self._count_sections(content),
+            "num_references": self._count_references(content),
+        }
+
+        return metadata
+
+    def _count_sections(self, content: str) -> int:
+        """Count approximate number of sections (== headers)"""
+        # Count lines that look like section headers
+        # Wikipedia plaintext uses "\n\n" for sections or "==" markers in some cases
+        sections = content.count("\n\n\n")  # Major breaks
+        return max(sections, 1)  # At least 1 section
+
+    def _count_references(self, content: str) -> int:
+        """
+        Count references/citations in Wikipedia content
+        Wikipedia plaintext doesn't have [1], [2] markers, so this is approximate
+        """
+        # Count patterns that might indicate citations
+        # This is a rough estimate since plaintext strips citation markers
+        reference_patterns = [
+            r"\[\d+\]",  # [1], [2], etc.
+            r"Retrieved",  # "Retrieved from..."
+            r"Archived",  # "Archived from..."
+        ]
+
+        total = 0
+        for pattern in reference_patterns:
+            matches = re.findall(pattern, content)
+            total += len(matches)
+
+        return total
+
+    def get_backlinks(self, title: str) -> int:
+        """
+        Get number of backlinks (pages that link TO this article)
+        Uses Wikipedia API
+
+        Returns: count of backlinks (0 if error)
+        """
+        self._rate_limit()
+
+        url = f"https://{self.language}.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "list": "backlinks",
+            "bltitle": title,
+            "bllimit": "1",  # We only need the count
+            "format": "json",
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            # Get total count from continue token or from result
+            if "query" in data and "backlinks" in data["query"]:
+                # Need to make second request to get full count
+                params["bllimit"] = "max"
+                response = requests.get(url, params=params, timeout=10)
+                data = response.json()
+
+                count = len(data.get("query", {}).get("backlinks", []))
+                logger.debug(f"Backlinks for '{title}': {count}")
+                return count
+
+            return 0
+
+        except Exception as e:
+            logger.error(f"Failed to get backlinks for '{title}': {e}")
+            return 0
+
+    def get_page_multilingual(
+        self, entity_names: Dict[str, str], languages: List[str] = ["en", "fr", "ar"]
+    ) -> Dict[str, Optional[Dict]]:
+        """
+        Fetch Wikipedia pages in multiple languages with metadata
+
+        Args:
+            entity_names: Dict mapping language codes to entity names
+                         e.g., {"en": "Albert Einstein", "fr": "Albert Einstein", "ar": "ألبرت أينشتاين"}
+            languages: List of language codes to fetch (default: ["en", "fr", "ar"])
+
+        Returns:
+            Dict mapping language codes to page data
+            e.g., {"en": {title, content, url, summary, metadata}, "fr": {...}, "ar": {...}}
+        """
+        results = {}
+
+        for lang in languages:
+            entity_name = entity_names.get(lang)
+
+            if not entity_name:
+                logger.warning(f"No entity name provided for language: {lang}")
+                results[lang] = None
+                continue
+
+            # Change language
+            self.change_language(lang)
+
+            # Fetch page with metadata
+            page_data = self.get_page(entity_name)
+
+            # Add backlinks count to metadata if page exists
+            if page_data and page_data.get("title"):
+                backlinks = self.get_backlinks(page_data["title"])
+                page_data["metadata"]["num_backlinks"] = backlinks
+
+            results[lang] = page_data
+
+        return results
 
     def get_summary(self, entity_name: str, sentences: int = 3) -> Optional[str]:
         """Get Wikipedia summary (first few sentences)"""
@@ -126,4 +267,55 @@ class WikipediaClient:
         """Change Wikipedia language"""
         self.language = language
         wikipedia.set_lang(language)
-        logger.info(f"Changed Wikipedia language to: {language}")
+        logger.debug(f"Changed Wikipedia language to: {language}")
+
+    def get_page_by_title(self, title: str, max_retries: int = 3) -> Optional[Dict]:
+        """
+        Get Wikipedia page by exact title (no search, no disambiguation)
+
+        Args:
+            title: Exact Wikipedia article title
+            max_retries: Number of retry attempts
+
+        Returns:
+            Dict with page data or None if not found
+        """
+        self._rate_limit()
+
+        for attempt in range(max_retries):
+            try:
+                # Fetch by exact title - no auto_suggest
+                page = wikipedia.page(title, auto_suggest=False)
+
+                # Extract metadata
+                metadata = self._extract_metadata(
+                    page.content, page.title, page.summary
+                )
+
+                result = {
+                    "title": page.title,
+                    "content": page.content,
+                    "url": page.url,
+                    "summary": page.summary,
+                    "metadata": metadata,
+                }
+
+                logger.info(
+                    f"Fetched Wikipedia page: {page.title} ({metadata['text_length_chars']} chars)"
+                )
+                return result
+
+            except wikipedia.exceptions.PageError:
+                logger.warning(f"Page not found by exact title: '{title}'")
+                return None
+
+            except Exception as e:
+                logger.error(
+                    f"Wikipedia error for '{title}' (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    return None
+
+        return None

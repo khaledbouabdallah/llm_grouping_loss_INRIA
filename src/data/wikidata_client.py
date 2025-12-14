@@ -1,5 +1,5 @@
 """
-Wikidata SPARQL client with rate limiting and error handling
+Wikidata SPARQL client with rate limiting and multilingual support
 """
 
 import requests
@@ -9,17 +9,18 @@ from typing import Dict, List, Optional
 from .config import (
     WikidataProperties as P,
     WikidataEntities as E,
-    SPARQL_PEOPLE_TEMPLATE,
-    SPARQL_DISCOVERIES_TEMPLATE,
-    SPARQL_PLACES_TEMPLATE,
-    SPARQL_EVENTS_TEMPLATE,
+    SPARQL_PEOPLE_MULTILINGUAL_TEMPLATE,
+    SPARQL_EVENTS_MULTILINGUAL_TEMPLATE,
+    SPARQL_DISCOVERIES_MULTILINGUAL_TEMPLATE,
+    SPARQL_PLACES_MULTILINGUAL_TEMPLATE,
+    EVENT_TYPES,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class WikidataClient:
-    """Client for querying Wikidata with rate limiting"""
+    """Client for querying Wikidata with rate limiting and multilingual support"""
 
     ENDPOINT = "https://query.wikidata.org/sparql"
 
@@ -81,40 +82,66 @@ class WikidataClient:
         return []
 
     def _parse_results(self, results: List[Dict]) -> List[Dict]:
-        """Parse SPARQL results into clean dictionaries"""
+        """Parse SPARQL results into clean dictionaries with Arabic fallback"""
         parsed = []
 
         for result in results:
             item = {}
             for key, value in result.items():
-                # Remove 'Label' suffix for cleaner keys
-                clean_key = (
-                    key.replace("Label", "_label") if key.endswith("Label") else key
-                )
-
                 # Extract value
-                item[clean_key] = value["value"]
+                item[key] = value["value"]
 
                 # Extract Wikidata ID if it's an entity URI
                 if "http://www.wikidata.org/entity/" in value["value"]:
-                    item[f"{clean_key}_id"] = value["value"].split("/")[-1]
+                    # Remove language suffix if present (e.g., "personLabel_en" -> "person")
+                    base_key = key.split("_")[0] if "_" in key else key
+                    item[f"{base_key}_id"] = value["value"].split("/")[-1]
+
+            # Handle Arabic fallback: if ar is missing, use arz
+            item = self._apply_arabic_fallback(item)
 
             parsed.append(item)
 
         return parsed
 
-    def get_people(
+    def _apply_arabic_fallback(self, item: Dict) -> Dict:
+        """
+        Apply Arabic fallback logic: prioritize 'ar', use 'arz' if 'ar' is missing
+        Adds metadata about which Arabic variant was used
+        """
+        # Find all keys that have Arabic variants
+        keys_with_ar = [k.replace("_ar", "") for k in item.keys() if k.endswith("_ar")]
+
+        for base_key in keys_with_ar:
+            ar_key = f"{base_key}_ar"
+            arz_key = f"{base_key}_arz"
+
+            # If ar exists, use it and mark as 'ar'
+            if item.get(ar_key):
+                item[f"{base_key}_arabic_variant"] = "ar"
+            # If ar missing but arz exists, copy arz to ar and mark as 'arz'
+            elif item.get(arz_key):
+                item[ar_key] = item[arz_key]
+                item[f"{base_key}_arabic_variant"] = "arz"
+                logger.debug(f"Using Egyptian Arabic (arz) fallback for {base_key}")
+            else:
+                # Neither exists
+                item[f"{base_key}_arabic_variant"] = None
+
+        return item
+
+    def get_people_multilingual(
         self,
         nationalities: List[str],
         limit: int = 100,
         min_year: int = 1850,
         max_year: int = 2000,
     ) -> List[Dict]:
-        """Get people with specified nationalities"""
+        """Get people with specified nationalities, returning labels in en, fr, ar"""
 
         nationality_list = " ".join([f"wd:{n}" for n in nationalities])
 
-        query = SPARQL_PEOPLE_TEMPLATE.format(
+        query = SPARQL_PEOPLE_MULTILINGUAL_TEMPLATE.format(
             nationalities=nationality_list,
             instance_of=P.INSTANCE_OF,
             human=E.HUMAN,
@@ -122,60 +149,111 @@ class WikidataClient:
             birth_date=P.BIRTH_DATE,
             birth_place=P.BIRTH_PLACE,
             occupation_prop=P.OCCUPATION,
+            gender_prop=P.GENDER,
+            death_date=P.DEATH_DATE,
             min_year=min_year,
             max_year=max_year,
             limit=limit,
         )
 
-        logger.info(f"Querying {len(nationalities)} nationalities, limit={limit}")
-        return self.query(query)
-
-    def get_discoveries(
-        self, limit: int = 50, min_year: int = 1800, max_year: int = 2000
-    ) -> List[Dict]:
-        """Get scientific discoveries/inventions"""
-
-        query = SPARQL_DISCOVERIES_TEMPLATE.format(
-            inventor_prop=P.INVENTOR,
-            date_prop=P.DISCOVERY_DATE,
-            nationality_prop=P.NATIONALITY,
-            min_year=min_year,
-            max_year=max_year,
-            limit=limit,
+        logger.info(
+            f"Querying {len(nationalities)} nationalities (multilingual), limit={limit}"
         )
-
-        logger.info(f"Querying discoveries, limit={limit}")
         return self.query(query)
 
-    def get_places(self, countries: List[str], limit: int = 50) -> List[Dict]:
-        """Get cities from specified countries"""
+    def get_sitelinks_count(self, wikidata_id: str) -> int:
+        """
+        Get count of Wikipedia language versions for an entity
+        Fetches via Wikidata API (much faster than SPARQL aggregation)
 
-        country_list = " ".join([f"wd:{c}" for c in countries])
+        Args:
+            wikidata_id: Wikidata ID (e.g., 'Q937')
 
-        query = SPARQL_PLACES_TEMPLATE.format(
-            countries=country_list,
-            instance_of=P.INSTANCE_OF,
-            city=E.CITY,
-            country_prop=P.COUNTRY,
-            coords_prop=P.COORDINATES,
-            limit=limit,
-        )
+        Returns:
+            Count of Wikipedia language versions (0 if error)
+        """
+        self._rate_limit()
 
-        logger.info(f"Querying places in {len(countries)} countries, limit={limit}")
-        return self.query(query)
+        url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikidata_id}.json"
 
-    def get_events(
+        try:
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            sitelinks = data["entities"][wikidata_id].get("sitelinks", {})
+
+            # Count only Wikipedia sites (exclude Wikiquote, Wiktionary, etc.)
+            # Wikipedia site keys end with 'wiki' but not 'wikiquote', 'wikisource', etc.
+            wikipedia_count = sum(
+                1
+                for key in sitelinks.keys()
+                if key.endswith("wiki")
+                and "quote" not in key
+                and "source" not in key
+                and "books" not in key
+                and "versity" not in key
+                and "voyage" not in key
+                and "news" not in key
+            )
+
+            logger.debug(f"Sitelinks for {wikidata_id}: {wikipedia_count}")
+            return wikipedia_count
+
+        except Exception as e:
+            logger.warning(f"Failed to get sitelinks for {wikidata_id}: {e}")
+            return 0
+
+    def get_wikipedia_titles(self, wikidata_id: str) -> dict:
+        """
+        Get exact Wikipedia article titles from Wikidata sitelinks
+        Returns dict: {'en': 'Article_Title', 'fr': 'Titre', 'ar': 'عنوان'}
+
+        This is MORE RELIABLE than searching by entity name!
+        """
+        self._rate_limit()
+
+        url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikidata_id}.json"
+
+        try:
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            sitelinks = data["entities"][wikidata_id].get("sitelinks", {})
+
+            titles = {}
+
+            # Extract titles for each language
+            if "enwiki" in sitelinks:
+                titles["en"] = sitelinks["enwiki"]["title"]
+            if "frwiki" in sitelinks:
+                titles["fr"] = sitelinks["frwiki"]["title"]
+            if "arwiki" in sitelinks:
+                titles["ar"] = sitelinks["arwiki"]["title"]
+
+            logger.debug(f"Wikipedia titles for {wikidata_id}: {titles}")
+            return titles
+
+        except Exception as e:
+            logger.warning(f"Failed to get Wikipedia titles for {wikidata_id}: {e}")
+            return {}
+
+    def get_events_multilingual(
         self,
-        event_types: List[str],
+        event_types: List[str] = None,
         limit: int = 50,
-        min_year: int = 1850,
+        min_year: int = 1800,
         max_year: int = 2000,
     ) -> List[Dict]:
-        """Get historical events of specified types"""
+        """Get events with specified types, returning labels in en, fr, ar"""
+
+        if event_types is None:
+            event_types = EVENT_TYPES
 
         event_type_list = " ".join([f"wd:{e}" for e in event_types])
 
-        query = SPARQL_EVENTS_TEMPLATE.format(
+        query = SPARQL_EVENTS_MULTILINGUAL_TEMPLATE.format(
             event_types=event_type_list,
             instance_of=P.INSTANCE_OF,
             date_prop=P.POINT_IN_TIME,
@@ -185,35 +263,53 @@ class WikidataClient:
             limit=limit,
         )
 
-        logger.info(f"Querying events, limit={limit}")
+        logger.info(
+            f"Querying {len(event_types)} event types (multilingual), limit={limit}"
+        )
         return self.query(query)
 
-    def get_entity_facts(self, wikidata_id: str) -> Dict:
-        """Get all facts for a single entity"""
-        query = f"""
-        SELECT ?prop ?propLabel ?value ?valueLabel WHERE {{
-          wd:{wikidata_id} ?p ?value .
-          ?prop wikibase:directClaim ?p .
+    def get_discoveries_multilingual(
+        self,
+        limit: int = 50,
+        min_year: int = 1800,
+        max_year: int = 2000,
+    ) -> List[Dict]:
+        """Get discoveries/inventions, returning labels in en, fr, ar"""
 
-          SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-        }}
-        LIMIT 100
-        """
+        query = SPARQL_DISCOVERIES_MULTILINGUAL_TEMPLATE.format(
+            inventor_prop=P.INVENTOR,
+            date_prop=P.DISCOVERY_DATE,
+            nationality_prop=P.NATIONALITY,
+            min_year=min_year,
+            max_year=max_year,
+            limit=limit,
+        )
 
-        results = self.query(query)
+        logger.info(f"Querying discoveries (multilingual), limit={limit}")
+        return self.query(query)
 
-        # Group by property
-        facts = {}
-        for result in results:
-            prop_id = result.get("prop_id", result.get("prop"))
-            if prop_id:
-                if prop_id not in facts:
-                    facts[prop_id] = []
-                facts[prop_id].append(
-                    {
-                        "value": result.get("value"),
-                        "value_label": result.get("value_label"),
-                    }
-                )
+    def get_places_multilingual(
+        self,
+        countries: List[str],
+        limit: int = 50,
+    ) -> List[Dict]:
+        """Get places/cities from specified countries, returning labels in en, fr, ar"""
 
-        return facts
+        country_list = " ".join([f"wd:{c}" for c in countries])
+
+        query = SPARQL_PLACES_MULTILINGUAL_TEMPLATE.format(
+            countries=country_list,
+            instance_of=P.INSTANCE_OF,
+            city=E.CITY,
+            capital=E.CAPITAL_CITY,
+            big_city=E.BIG_CITY,
+            country_prop=P.COUNTRY,
+            coords_prop=P.COORDINATES,
+            population_prop=P.POPULATION,
+            limit=limit,
+        )
+
+        logger.info(
+            f"Querying places in {len(countries)} countries (multilingual), limit={limit}"
+        )
+        return self.query(query)

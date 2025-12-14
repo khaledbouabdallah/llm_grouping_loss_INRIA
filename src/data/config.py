@@ -121,14 +121,33 @@ OCCUPATIONS = [
     WikidataEntities.WRITER,
 ]
 
+# Event types for querying
+EVENT_TYPES = [
+    WikidataEntities.WAR,
+    WikidataEntities.REVOLUTION,
+    WikidataEntities.SPORT_COMPETITION,
+]
+
 
 # ============================================================================
-# SPARQL QUERY TEMPLATES
+# SPARQL QUERY TEMPLATES - MULTILINGUAL
 # ============================================================================
 
-SPARQL_PEOPLE_TEMPLATE = """
-SELECT DISTINCT ?person ?personLabel ?birthDate ?birthPlace ?birthPlaceLabel
-                ?nationality ?nationalityLabel ?occupation ?occupationLabel WHERE {{
+# People multilingual template - fetches labels in en, fr, ar (with arz fallback)
+SPARQL_PEOPLE_MULTILINGUAL_TEMPLATE = """
+SELECT DISTINCT
+    ?person
+    ?personLabel_en ?personLabel_fr ?personLabel_ar ?personLabel_arz
+    ?birthDate
+    ?birthPlace
+    ?birthPlaceLabel_en ?birthPlaceLabel_fr ?birthPlaceLabel_ar ?birthPlaceLabel_arz
+    ?nationality
+    ?nationalityLabel_en ?nationalityLabel_fr ?nationalityLabel_ar ?nationalityLabel_arz
+    ?occupation
+    ?occupationLabel_en ?occupationLabel_fr ?occupationLabel_ar ?occupationLabel_arz
+    ?gender
+    ?deathDate
+WHERE {{
   VALUES ?nationality {{ {nationalities} }}
 
   ?person wdt:{instance_of} wd:{human} .
@@ -137,55 +156,332 @@ SELECT DISTINCT ?person ?personLabel ?birthDate ?birthPlace ?birthPlaceLabel
   ?person wdt:{birth_place} ?birthPlace .
   ?person wdt:{occupation_prop} ?occupation .
 
+  # Gender (optional)
+  OPTIONAL {{ ?person wdt:{gender_prop} ?gender . }}
+
+  # Death date (optional - not everyone is dead)
+  OPTIONAL {{ ?person wdt:{death_date} ?deathDate . }}
+
   FILTER(YEAR(?birthDate) > {min_year})
   FILTER(YEAR(?birthDate) < {max_year})
 
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+  # English labels
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_en .
+    FILTER(LANG(?personLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_en .
+    FILTER(LANG(?birthPlaceLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_en .
+    FILTER(LANG(?nationalityLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_en .
+    FILTER(LANG(?occupationLabel_en) = "en")
+  }}
+
+  # French labels
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_fr .
+    FILTER(LANG(?personLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_fr .
+    FILTER(LANG(?birthPlaceLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_fr .
+    FILTER(LANG(?nationalityLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_fr .
+    FILTER(LANG(?occupationLabel_fr) = "fr")
+  }}
+
+  # Arabic labels (Modern Standard Arabic)
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_ar .
+    FILTER(LANG(?personLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_ar .
+    FILTER(LANG(?birthPlaceLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_ar .
+    FILTER(LANG(?nationalityLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_ar .
+    FILTER(LANG(?occupationLabel_ar) = "ar")
+  }}
+
+  # Egyptian Arabic labels (fallback)
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_arz .
+    FILTER(LANG(?personLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_arz .
+    FILTER(LANG(?birthPlaceLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_arz .
+    FILTER(LANG(?nationalityLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_arz .
+    FILTER(LANG(?occupationLabel_arz) = "arz")
+  }}
 }}
 LIMIT {limit}
 """
 
-SPARQL_DISCOVERIES_TEMPLATE = """
-SELECT DISTINCT ?discovery ?discoveryLabel ?inventor ?inventorLabel
-                ?date ?country ?countryLabel WHERE {{
+# Events multilingual template
+SPARQL_EVENTS_MULTILINGUAL_TEMPLATE = """
+SELECT DISTINCT
+    ?event
+    ?eventLabel_en ?eventLabel_fr ?eventLabel_ar ?eventLabel_arz
+    ?date
+    ?location
+    ?locationLabel_en ?locationLabel_fr ?locationLabel_ar ?locationLabel_arz
+    ?eventType
+    ?eventTypeLabel_en ?eventTypeLabel_fr ?eventTypeLabel_ar ?eventTypeLabel_arz
+    (COUNT(DISTINCT ?sitelink) as ?num_wikipedia_languages)
+WHERE {{
+  VALUES ?eventType {{ {event_types} }}
+
+  ?event wdt:{instance_of} ?eventType .
+  ?event wdt:{date_prop} ?date .
+
+  # Location (optional)
+  OPTIONAL {{ ?event wdt:{location_prop} ?location . }}
+
+  FILTER(YEAR(?date) > {min_year})
+  FILTER(YEAR(?date) < {max_year})
+
+  # English labels
+  OPTIONAL {{
+    ?event rdfs:label ?eventLabel_en .
+    FILTER(LANG(?eventLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?location rdfs:label ?locationLabel_en .
+    FILTER(LANG(?locationLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?eventType rdfs:label ?eventTypeLabel_en .
+    FILTER(LANG(?eventTypeLabel_en) = "en")
+  }}
+
+  # French labels
+  OPTIONAL {{
+    ?event rdfs:label ?eventLabel_fr .
+    FILTER(LANG(?eventLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?location rdfs:label ?locationLabel_fr .
+    FILTER(LANG(?locationLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?eventType rdfs:label ?eventTypeLabel_fr .
+    FILTER(LANG(?eventTypeLabel_fr) = "fr")
+  }}
+
+  # Arabic labels
+  OPTIONAL {{
+    ?event rdfs:label ?eventLabel_ar .
+    FILTER(LANG(?eventLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?location rdfs:label ?locationLabel_ar .
+    FILTER(LANG(?locationLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?eventType rdfs:label ?eventTypeLabel_ar .
+    FILTER(LANG(?eventTypeLabel_ar) = "ar")
+  }}
+
+  # Egyptian Arabic labels (fallback)
+  OPTIONAL {{
+    ?event rdfs:label ?eventLabel_arz .
+    FILTER(LANG(?eventLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?location rdfs:label ?locationLabel_arz .
+    FILTER(LANG(?locationLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?eventType rdfs:label ?eventTypeLabel_arz .
+    FILTER(LANG(?eventTypeLabel_arz) = "arz")
+  }}
+}}
+LIMIT {limit}
+"""
+
+# Discoveries multilingual template
+SPARQL_DISCOVERIES_MULTILINGUAL_TEMPLATE = """
+SELECT DISTINCT
+    ?discovery
+    ?discoveryLabel_en ?discoveryLabel_fr ?discoveryLabel_ar ?discoveryLabel_arz
+    ?inventor
+    ?inventorLabel_en ?inventorLabel_fr ?inventorLabel_ar ?inventorLabel_arz
+    ?date
+    ?country
+    ?countryLabel_en ?countryLabel_fr ?countryLabel_ar ?countryLabel_arz
+WHERE {{
   ?discovery wdt:{inventor_prop} ?inventor .
   ?discovery wdt:{date_prop} ?date .
 
+  # Country (optional)
   OPTIONAL {{ ?inventor wdt:{nationality_prop} ?country . }}
 
   FILTER(YEAR(?date) > {min_year})
   FILTER(YEAR(?date) < {max_year})
 
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+  # English labels
+  OPTIONAL {{
+    ?discovery rdfs:label ?discoveryLabel_en .
+    FILTER(LANG(?discoveryLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?inventor rdfs:label ?inventorLabel_en .
+    FILTER(LANG(?inventorLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_en .
+    FILTER(LANG(?countryLabel_en) = "en")
+  }}
+
+  # French labels
+  OPTIONAL {{
+    ?discovery rdfs:label ?discoveryLabel_fr .
+    FILTER(LANG(?discoveryLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?inventor rdfs:label ?inventorLabel_fr .
+    FILTER(LANG(?inventorLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_fr .
+    FILTER(LANG(?countryLabel_fr) = "fr")
+  }}
+
+  # Arabic labels
+  OPTIONAL {{
+    ?discovery rdfs:label ?discoveryLabel_ar .
+    FILTER(LANG(?discoveryLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?inventor rdfs:label ?inventorLabel_ar .
+    FILTER(LANG(?inventorLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_ar .
+    FILTER(LANG(?countryLabel_ar) = "ar")
+  }}
+
+  # Egyptian Arabic labels (fallback)
+  OPTIONAL {{
+    ?discovery rdfs:label ?discoveryLabel_arz .
+    FILTER(LANG(?discoveryLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?inventor rdfs:label ?inventorLabel_arz .
+    FILTER(LANG(?inventorLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_arz .
+    FILTER(LANG(?countryLabel_arz) = "arz")
+  }}
 }}
 LIMIT {limit}
 """
 
-SPARQL_PLACES_TEMPLATE = """
-SELECT DISTINCT ?place ?placeLabel ?country ?countryLabel ?coords WHERE {{
+# Places multilingual template
+SPARQL_PLACES_MULTILINGUAL_TEMPLATE = """
+SELECT DISTINCT
+    ?place
+    ?placeLabel_en ?placeLabel_fr ?placeLabel_ar ?placeLabel_arz
+    ?country
+    ?countryLabel_en ?countryLabel_fr ?countryLabel_ar ?countryLabel_arz
+    ?coords
+    ?population
+    ?placeType
+    ?placeTypeLabel_en ?placeTypeLabel_fr ?placeTypeLabel_ar ?placeTypeLabel_arz
+WHERE {{
   VALUES ?country {{ {countries} }}
 
-  ?place wdt:{instance_of} wd:{city} .
+  ?place wdt:{instance_of} ?placeType .
   ?place wdt:{country_prop} ?country .
-  ?place wdt:{coords_prop} ?coords .
 
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-}}
-LIMIT {limit}
-"""
+  # Coordinates (optional)
+  OPTIONAL {{ ?place wdt:{coords_prop} ?coords . }}
 
-SPARQL_EVENTS_TEMPLATE = """
-SELECT DISTINCT ?event ?eventLabel ?date ?location ?locationLabel WHERE {{
-  VALUES ?eventType {{ {event_types} }}
+  # Population (optional)
+  OPTIONAL {{ ?place wdt:{population_prop} ?population . }}
 
-  ?event wdt:{instance_of} ?eventType .
-  ?event wdt:{date_prop} ?date .
-  ?event wdt:{location_prop} ?location .
+  # Filter for cities/capitals
+  FILTER(?placeType IN (wd:{city}, wd:{capital}, wd:{big_city}))
 
-  FILTER(YEAR(?date) > {min_year})
-  FILTER(YEAR(?date) < {max_year})
+  # English labels
+  OPTIONAL {{
+    ?place rdfs:label ?placeLabel_en .
+    FILTER(LANG(?placeLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_en .
+    FILTER(LANG(?countryLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?placeType rdfs:label ?placeTypeLabel_en .
+    FILTER(LANG(?placeTypeLabel_en) = "en")
+  }}
 
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+  # French labels
+  OPTIONAL {{
+    ?place rdfs:label ?placeLabel_fr .
+    FILTER(LANG(?placeLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_fr .
+    FILTER(LANG(?countryLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?placeType rdfs:label ?placeTypeLabel_fr .
+    FILTER(LANG(?placeTypeLabel_fr) = "fr")
+  }}
+
+  # Arabic labels
+  OPTIONAL {{
+    ?place rdfs:label ?placeLabel_ar .
+    FILTER(LANG(?placeLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_ar .
+    FILTER(LANG(?countryLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?placeType rdfs:label ?placeTypeLabel_ar .
+    FILTER(LANG(?placeTypeLabel_ar) = "ar")
+  }}
+
+  # Egyptian Arabic labels (fallback)
+  OPTIONAL {{
+    ?place rdfs:label ?placeLabel_arz .
+    FILTER(LANG(?placeLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?country rdfs:label ?countryLabel_arz .
+    FILTER(LANG(?countryLabel_arz) = "arz")
+  }}
+  OPTIONAL {{
+    ?placeType rdfs:label ?placeTypeLabel_arz .
+    FILTER(LANG(?placeTypeLabel_arz) = "arz")
+  }}
 }}
 LIMIT {limit}
 """
