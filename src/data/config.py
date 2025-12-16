@@ -53,12 +53,20 @@ class WikidataEntities:
     REVOLUTION = "Q18608583"
     SPORT_COMPETITION = "Q27020041"
 
-    # Nationalities - Western
+    # Nationalities - Western (Europe + North America)
     FRANCE = "Q142"
     GERMANY = "Q183"
     USA = "Q30"
     SPAIN = "Q29"
     UK = "Q145"
+    ITALY = "Q38"
+    NETHERLANDS = "Q55"
+    BELGIUM = "Q31"
+    SWITZERLAND = "Q39"
+    SWEDEN = "Q34"
+    NORWAY = "Q20"
+    CANADA = "Q16"
+    AUSTRALIA = "Q408"
 
     # Nationalities - Arabic/Middle Eastern
     EGYPT = "Q79"
@@ -67,12 +75,48 @@ class WikidataEntities:
     LEBANON = "Q822"
     MOROCCO = "Q1028"
     IRAQ = "Q796"
+    JORDAN = "Q810"
+    UAE = "Q878"
+    TUNISIA = "Q948"
+    ALGERIA = "Q262"
 
-    # Nationalities - Asian
+    # Nationalities - East Asian
     CHINA = "Q148"
     JAPAN = "Q17"
-    INDIA = "Q668"
     SOUTH_KOREA = "Q884"
+    TAIWAN = "Q865"
+    MONGOLIA = "Q711"
+
+    # Nationalities - South Asian
+    INDIA = "Q668"
+    PAKISTAN = "Q843"
+    BANGLADESH = "Q902"
+    NEPAL = "Q837"
+    SRI_LANKA = "Q854"
+
+    # Nationalities - Southeast Asian
+    THAILAND = "Q869"
+    VIETNAM = "Q881"
+    INDONESIA = "Q252"
+    PHILIPPINES = "Q928"
+    MALAYSIA = "Q833"
+
+    # Nationalities - Sub-Saharan African
+    NIGERIA = "Q1033"
+    SOUTH_AFRICA = "Q258"
+    KENYA = "Q114"
+    ETHIOPIA = "Q115"
+    GHANA = "Q117"
+    SENEGAL = "Q1041"
+
+    # Nationalities - Latin American
+    BRAZIL = "Q155"
+    ARGENTINA = "Q414"
+    MEXICO = "Q96"
+    CHILE = "Q298"
+    COLOMBIA = "Q739"
+    PERU = "Q419"
+    VENEZUELA = "Q717"
 
     # Occupations
     SCIENTIST = "Q901"
@@ -97,6 +141,15 @@ WESTERN_COUNTRIES = [
     WikidataEntities.GERMANY,
     WikidataEntities.USA,
     WikidataEntities.SPAIN,
+    WikidataEntities.UK,
+    WikidataEntities.ITALY,
+    WikidataEntities.NETHERLANDS,
+    WikidataEntities.BELGIUM,
+    WikidataEntities.SWITZERLAND,
+    WikidataEntities.SWEDEN,
+    WikidataEntities.NORWAY,
+    WikidataEntities.CANADA,
+    WikidataEntities.AUSTRALIA,
 ]
 
 ARABIC_COUNTRIES = [
@@ -104,14 +157,124 @@ ARABIC_COUNTRIES = [
     WikidataEntities.SYRIA,
     WikidataEntities.SAUDI_ARABIA,
     WikidataEntities.LEBANON,
+    WikidataEntities.MOROCCO,
+    WikidataEntities.IRAQ,
+    WikidataEntities.JORDAN,
+    WikidataEntities.UAE,
+    WikidataEntities.TUNISIA,
+    WikidataEntities.ALGERIA,
 ]
 
-ASIAN_COUNTRIES = [
+EAST_ASIAN_COUNTRIES = [
     WikidataEntities.CHINA,
     WikidataEntities.JAPAN,
-    WikidataEntities.INDIA,
     WikidataEntities.SOUTH_KOREA,
+    WikidataEntities.TAIWAN,
+    WikidataEntities.MONGOLIA,
 ]
+
+SOUTH_ASIAN_COUNTRIES = [
+    WikidataEntities.INDIA,
+    WikidataEntities.PAKISTAN,
+    WikidataEntities.BANGLADESH,
+    WikidataEntities.NEPAL,
+    WikidataEntities.SRI_LANKA,
+]
+
+SOUTHEAST_ASIAN_COUNTRIES = [
+    WikidataEntities.THAILAND,
+    WikidataEntities.VIETNAM,
+    WikidataEntities.INDONESIA,
+    WikidataEntities.PHILIPPINES,
+    WikidataEntities.MALAYSIA,
+]
+
+AFRICAN_COUNTRIES = [
+    WikidataEntities.NIGERIA,
+    WikidataEntities.SOUTH_AFRICA,
+    WikidataEntities.KENYA,
+    WikidataEntities.ETHIOPIA,
+    WikidataEntities.GHANA,
+    WikidataEntities.SENEGAL,
+]
+
+LATIN_AMERICAN_COUNTRIES = [
+    WikidataEntities.BRAZIL,
+    WikidataEntities.ARGENTINA,
+    WikidataEntities.MEXICO,
+    WikidataEntities.CHILE,
+    WikidataEntities.COLOMBIA,
+    WikidataEntities.PERU,
+    WikidataEntities.VENEZUELA,
+]
+
+# Backwards compatibility
+ASIAN_COUNTRIES = (
+    EAST_ASIAN_COUNTRIES + SOUTH_ASIAN_COUNTRIES + SOUTHEAST_ASIAN_COUNTRIES
+)
+
+# Complete mapping of country code to (country_name, culture_group)
+COUNTRY_METADATA = {
+    # Western
+    "Q30": ("United States", "Western"),
+    "Q142": ("France", "Western"),
+    "Q183": ("Germany", "Western"),
+    "Q145": ("United Kingdom", "Western"),
+    "Q29": ("Spain", "Western"),
+    "Q38": ("Italy", "Western"),
+    "Q55": ("Netherlands", "Western"),
+    "Q31": ("Belgium", "Western"),
+    "Q39": ("Switzerland", "Western"),
+    "Q34": ("Sweden", "Western"),
+    "Q20": ("Norway", "Western"),
+    "Q16": ("Canada", "Western"),
+    "Q408": ("Australia", "Western"),
+    # Arabic/Middle Eastern
+    "Q79": ("Egypt", "Arabic"),
+    "Q858": ("Syria", "Arabic"),
+    "Q851": ("Saudi Arabia", "Arabic"),
+    "Q822": ("Lebanon", "Arabic"),
+    "Q1028": ("Morocco", "Arabic"),
+    "Q796": ("Iraq", "Arabic"),
+    "Q810": ("Jordan", "Arabic"),
+    "Q878": ("United Arab Emirates", "Arabic"),
+    "Q948": ("Tunisia", "Arabic"),
+    "Q262": ("Algeria", "Arabic"),
+    # East Asian
+    "Q148": ("China", "East Asian"),
+    "Q17": ("Japan", "East Asian"),
+    "Q884": ("South Korea", "East Asian"),
+    "Q865": ("Taiwan", "East Asian"),
+    "Q711": ("Mongolia", "East Asian"),
+    # South Asian
+    "Q668": ("India", "South Asian"),
+    "Q843": ("Pakistan", "South Asian"),
+    "Q902": ("Bangladesh", "South Asian"),
+    "Q837": ("Nepal", "South Asian"),
+    "Q854": ("Sri Lanka", "South Asian"),
+    # Southeast Asian
+    "Q869": ("Thailand", "Southeast Asian"),
+    "Q881": ("Vietnam", "Southeast Asian"),
+    "Q252": ("Indonesia", "Southeast Asian"),
+    "Q928": ("Philippines", "Southeast Asian"),
+    "Q833": ("Malaysia", "Southeast Asian"),
+    # Sub-Saharan African
+    "Q1033": ("Nigeria", "African"),
+    "Q258": ("South Africa", "African"),
+    "Q114": ("Kenya", "African"),
+    "Q115": ("Ethiopia", "African"),
+    "Q117": ("Ghana", "African"),
+    "Q1041": ("Senegal", "African"),
+    # Latin American
+    "Q155": ("Brazil", "Latin American"),
+    "Q414": ("Argentina", "Latin American"),
+    "Q96": ("Mexico", "Latin American"),
+    "Q298": ("Chile", "Latin American"),
+    "Q739": ("Colombia", "Latin American"),
+    "Q419": ("Peru", "Latin American"),
+    "Q717": ("Venezuela", "Latin American"),
+}
+
 
 OCCUPATIONS = [
     WikidataEntities.SCIENTIST,
@@ -133,7 +296,8 @@ EVENT_TYPES = [
 # SPARQL QUERY TEMPLATES - MULTILINGUAL
 # ============================================================================
 
-# People multilingual template - fetches labels in en, fr, ar (with arz fallback)
+# People multilingual template - fetches ALL labels in SPARQL (no ORDER BY)
+# Without ORDER BY, OPTIONAL labels work fine and are MUCH faster than API calls
 SPARQL_PEOPLE_MULTILINGUAL_TEMPLATE = """
 SELECT DISTINCT
     ?person
@@ -156,81 +320,78 @@ WHERE {{
   ?person wdt:{birth_place} ?birthPlace .
   ?person wdt:{occupation_prop} ?occupation .
 
-  # Gender (optional)
   OPTIONAL {{ ?person wdt:{gender_prop} ?gender . }}
-
-  # Death date (optional - not everyone is dead)
   OPTIONAL {{ ?person wdt:{death_date} ?deathDate . }}
 
   FILTER(YEAR(?birthDate) > {min_year})
   FILTER(YEAR(?birthDate) < {max_year})
 
-  # English labels
+  # Person labels
   OPTIONAL {{
     ?person rdfs:label ?personLabel_en .
     FILTER(LANG(?personLabel_en) = "en")
   }}
   OPTIONAL {{
-    ?birthPlace rdfs:label ?birthPlaceLabel_en .
-    FILTER(LANG(?birthPlaceLabel_en) = "en")
-  }}
-  OPTIONAL {{
-    ?nationality rdfs:label ?nationalityLabel_en .
-    FILTER(LANG(?nationalityLabel_en) = "en")
-  }}
-  OPTIONAL {{
-    ?occupation rdfs:label ?occupationLabel_en .
-    FILTER(LANG(?occupationLabel_en) = "en")
-  }}
-
-  # French labels
-  OPTIONAL {{
     ?person rdfs:label ?personLabel_fr .
     FILTER(LANG(?personLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_ar .
+    FILTER(LANG(?personLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?person rdfs:label ?personLabel_arz .
+    FILTER(LANG(?personLabel_arz) = "arz")
+  }}
+
+  # Birth place labels
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_en .
+    FILTER(LANG(?birthPlaceLabel_en) = "en")
   }}
   OPTIONAL {{
     ?birthPlace rdfs:label ?birthPlaceLabel_fr .
     FILTER(LANG(?birthPlaceLabel_fr) = "fr")
   }}
   OPTIONAL {{
-    ?nationality rdfs:label ?nationalityLabel_fr .
-    FILTER(LANG(?nationalityLabel_fr) = "fr")
-  }}
-  OPTIONAL {{
-    ?occupation rdfs:label ?occupationLabel_fr .
-    FILTER(LANG(?occupationLabel_fr) = "fr")
-  }}
-
-  # Arabic labels (Modern Standard Arabic)
-  OPTIONAL {{
-    ?person rdfs:label ?personLabel_ar .
-    FILTER(LANG(?personLabel_ar) = "ar")
-  }}
-  OPTIONAL {{
     ?birthPlace rdfs:label ?birthPlaceLabel_ar .
     FILTER(LANG(?birthPlaceLabel_ar) = "ar")
+  }}
+  OPTIONAL {{
+    ?birthPlace rdfs:label ?birthPlaceLabel_arz .
+    FILTER(LANG(?birthPlaceLabel_arz) = "arz")
+  }}
+
+  # Nationality labels
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_en .
+    FILTER(LANG(?nationalityLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?nationality rdfs:label ?nationalityLabel_fr .
+    FILTER(LANG(?nationalityLabel_fr) = "fr")
   }}
   OPTIONAL {{
     ?nationality rdfs:label ?nationalityLabel_ar .
     FILTER(LANG(?nationalityLabel_ar) = "ar")
   }}
   OPTIONAL {{
-    ?occupation rdfs:label ?occupationLabel_ar .
-    FILTER(LANG(?occupationLabel_ar) = "ar")
-  }}
-
-  # Egyptian Arabic labels (fallback)
-  OPTIONAL {{
-    ?person rdfs:label ?personLabel_arz .
-    FILTER(LANG(?personLabel_arz) = "arz")
-  }}
-  OPTIONAL {{
-    ?birthPlace rdfs:label ?birthPlaceLabel_arz .
-    FILTER(LANG(?birthPlaceLabel_arz) = "arz")
-  }}
-  OPTIONAL {{
     ?nationality rdfs:label ?nationalityLabel_arz .
     FILTER(LANG(?nationalityLabel_arz) = "arz")
+  }}
+
+  # Occupation labels
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_en .
+    FILTER(LANG(?occupationLabel_en) = "en")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_fr .
+    FILTER(LANG(?occupationLabel_fr) = "fr")
+  }}
+  OPTIONAL {{
+    ?occupation rdfs:label ?occupationLabel_ar .
+    FILTER(LANG(?occupationLabel_ar) = "ar")
   }}
   OPTIONAL {{
     ?occupation rdfs:label ?occupationLabel_arz .
@@ -318,8 +479,12 @@ WHERE {{
     ?eventType rdfs:label ?eventTypeLabel_arz .
     FILTER(LANG(?eventTypeLabel_arz) = "arz")
   }}
+
+  BIND(xsd:integer(strafter(str(?event), 'Q')) as ?qid)
 }}
+ORDER BY {order_direction}(?qid)
 LIMIT {limit}
+OFFSET {offset}
 """
 
 # Discoveries multilingual template
@@ -397,8 +562,12 @@ WHERE {{
     ?country rdfs:label ?countryLabel_arz .
     FILTER(LANG(?countryLabel_arz) = "arz")
   }}
+
+  BIND(xsd:integer(strafter(str(?discovery), 'Q')) as ?qid)
 }}
+ORDER BY {order_direction}(?qid)
 LIMIT {limit}
+OFFSET {offset}
 """
 
 # Places multilingual template
@@ -482,6 +651,10 @@ WHERE {{
     ?placeType rdfs:label ?placeTypeLabel_arz .
     FILTER(LANG(?placeTypeLabel_arz) = "arz")
   }}
+
+  BIND(xsd:integer(strafter(str(?place), 'Q')) as ?qid)
 }}
+ORDER BY {order_direction}(?qid)
 LIMIT {limit}
+OFFSET {offset}
 """

@@ -120,14 +120,12 @@ class WikipediaClient:
         - text_length_words
         - summary_length
         - num_sections (approximate)
-        - num_references (citation count)
         """
         metadata = {
             "text_length_chars": len(content),
             "text_length_words": len(content.split()),
             "summary_length": len(summary),
             "num_sections": self._count_sections(content),
-            "num_references": self._count_references(content),
         }
 
         return metadata
@@ -138,66 +136,6 @@ class WikipediaClient:
         # Wikipedia plaintext uses "\n\n" for sections or "==" markers in some cases
         sections = content.count("\n\n\n")  # Major breaks
         return max(sections, 1)  # At least 1 section
-
-    def _count_references(self, content: str) -> int:
-        """
-        Count references/citations in Wikipedia content
-        Wikipedia plaintext doesn't have [1], [2] markers, so this is approximate
-        """
-        # Count patterns that might indicate citations
-        # This is a rough estimate since plaintext strips citation markers
-        reference_patterns = [
-            r"\[\d+\]",  # [1], [2], etc.
-            r"Retrieved",  # "Retrieved from..."
-            r"Archived",  # "Archived from..."
-        ]
-
-        total = 0
-        for pattern in reference_patterns:
-            matches = re.findall(pattern, content)
-            total += len(matches)
-
-        return total
-
-    def get_backlinks(self, title: str) -> int:
-        """
-        Get number of backlinks (pages that link TO this article)
-        Uses Wikipedia API
-
-        Returns: count of backlinks (0 if error)
-        """
-        self._rate_limit()
-
-        url = f"https://{self.language}.wikipedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "list": "backlinks",
-            "bltitle": title,
-            "bllimit": "1",  # We only need the count
-            "format": "json",
-        }
-
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-
-            # Get total count from continue token or from result
-            if "query" in data and "backlinks" in data["query"]:
-                # Need to make second request to get full count
-                params["bllimit"] = "max"
-                response = requests.get(url, params=params, timeout=10)
-                data = response.json()
-
-                count = len(data.get("query", {}).get("backlinks", []))
-                logger.debug(f"Backlinks for '{title}': {count}")
-                return count
-
-            return 0
-
-        except Exception as e:
-            logger.error(f"Failed to get backlinks for '{title}': {e}")
-            return 0
 
     def get_page_multilingual(
         self, entity_names: Dict[str, str], languages: List[str] = ["en", "fr", "ar"]
@@ -229,11 +167,6 @@ class WikipediaClient:
 
             # Fetch page with metadata
             page_data = self.get_page(entity_name)
-
-            # Add backlinks count to metadata if page exists
-            if page_data and page_data.get("title"):
-                backlinks = self.get_backlinks(page_data["title"])
-                page_data["metadata"]["num_backlinks"] = backlinks
 
             results[lang] = page_data
 

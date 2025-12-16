@@ -149,14 +149,6 @@ class EntityDatabase:
             cursor.execute(
                 "ALTER TABLE wikipedia_texts ADD COLUMN num_sections INTEGER"
             )
-        if "num_references" not in columns:
-            cursor.execute(
-                "ALTER TABLE wikipedia_texts ADD COLUMN num_references INTEGER"
-            )
-        if "num_backlinks" not in columns:
-            cursor.execute(
-                "ALTER TABLE wikipedia_texts ADD COLUMN num_backlinks INTEGER"
-            )
 
         # Create indexes
         cursor.execute(
@@ -254,8 +246,6 @@ class EntityDatabase:
         text_length_chars: int = None,
         text_length_words: int = None,
         num_sections: int = None,
-        num_references: int = None,
-        num_backlinks: int = None,
     ) -> bool:
         """Add Wikipedia text for a specific language with metadata"""
         cursor = self.conn.cursor()
@@ -265,10 +255,9 @@ class EntityDatabase:
                 """
                 INSERT INTO wikipedia_texts (
                     entity_id, language, title, summary, content, url,
-                    text_length_chars, text_length_words, num_sections,
-                    num_references, num_backlinks
+                    text_length_chars, text_length_words, num_sections
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     entity_id,
@@ -280,8 +269,6 @@ class EntityDatabase:
                     text_length_chars,
                     text_length_words,
                     num_sections,
-                    num_references,
-                    num_backlinks,
                 ),
             )
             self.conn.commit()

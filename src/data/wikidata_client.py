@@ -137,7 +137,12 @@ class WikidataClient:
         min_year: int = 1850,
         max_year: int = 2000,
     ) -> List[Dict]:
-        """Get people with specified nationalities, returning labels in en, fr, ar"""
+        """
+        Get people with specified nationalities, returning labels in en, fr, ar
+
+        Note: Results are in random order (no ORDER BY to avoid timeout).
+        Max limit: 10000 per query. For more, split by nationality or year range.
+        """
 
         nationality_list = " ".join([f"wd:{n}" for n in nationalities])
 
@@ -239,12 +244,53 @@ class WikidataClient:
             logger.warning(f"Failed to get Wikipedia titles for {wikidata_id}: {e}")
             return {}
 
+    def get_entity_labels(
+        self, wikidata_id: str, languages: list = ["en", "fr", "ar"]
+    ) -> dict:
+        """
+        Get labels for an entity in multiple languages via Wikidata API
+        Much faster than fetching via SPARQL OPTIONAL clauses
+
+        Args:
+            wikidata_id: Wikidata ID (e.g., 'Q937')
+            languages: List of language codes
+
+        Returns:
+            Dict: {'en': 'Label', 'fr': 'Libellé', 'ar': 'تسمية'}
+        """
+        self._rate_limit()
+
+        url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikidata_id}.json"
+
+        try:
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            labels_data = data["entities"][wikidata_id].get("labels", {})
+
+            labels = {}
+            for lang in languages:
+                if lang in labels_data:
+                    labels[lang] = labels_data[lang]["value"]
+                # Try arz fallback for ar
+                elif lang == "ar" and "arz" in labels_data:
+                    labels[lang] = labels_data["arz"]["value"]
+
+            return labels
+
+        except Exception as e:
+            logger.debug(f"Failed to get labels for {wikidata_id}: {e}")
+            return {}
+
     def get_events_multilingual(
         self,
         event_types: List[str] = None,
         limit: int = 50,
+        offset: int = 0,
         min_year: int = 1800,
         max_year: int = 2000,
+        order_asc: bool = True,
     ) -> List[Dict]:
         """Get events with specified types, returning labels in en, fr, ar"""
 
@@ -252,6 +298,7 @@ class WikidataClient:
             event_types = EVENT_TYPES
 
         event_type_list = " ".join([f"wd:{e}" for e in event_types])
+        order_direction = "ASC" if order_asc else "DESC"
 
         query = SPARQL_EVENTS_MULTILINGUAL_TEMPLATE.format(
             event_types=event_type_list,
@@ -260,21 +307,27 @@ class WikidataClient:
             location_prop=P.LOCATION,
             min_year=min_year,
             max_year=max_year,
+            order_direction=order_direction,
             limit=limit,
+            offset=offset,
         )
 
         logger.info(
-            f"Querying {len(event_types)} event types (multilingual), limit={limit}"
+            f"Querying {len(event_types)} event types (multilingual), limit={limit}, offset={offset}"
         )
         return self.query(query)
 
     def get_discoveries_multilingual(
         self,
         limit: int = 50,
+        offset: int = 0,
         min_year: int = 1800,
         max_year: int = 2000,
+        order_asc: bool = True,
     ) -> List[Dict]:
         """Get discoveries/inventions, returning labels in en, fr, ar"""
+
+        order_direction = "ASC" if order_asc else "DESC"
 
         query = SPARQL_DISCOVERIES_MULTILINGUAL_TEMPLATE.format(
             inventor_prop=P.INVENTOR,
@@ -282,20 +335,27 @@ class WikidataClient:
             nationality_prop=P.NATIONALITY,
             min_year=min_year,
             max_year=max_year,
+            order_direction=order_direction,
             limit=limit,
+            offset=offset,
         )
 
-        logger.info(f"Querying discoveries (multilingual), limit={limit}")
+        logger.info(
+            f"Querying discoveries (multilingual), limit={limit}, offset={offset}"
+        )
         return self.query(query)
 
     def get_places_multilingual(
         self,
         countries: List[str],
         limit: int = 50,
+        offset: int = 0,
+        order_asc: bool = True,
     ) -> List[Dict]:
         """Get places/cities from specified countries, returning labels in en, fr, ar"""
 
         country_list = " ".join([f"wd:{c}" for c in countries])
+        order_direction = "ASC" if order_asc else "DESC"
 
         query = SPARQL_PLACES_MULTILINGUAL_TEMPLATE.format(
             countries=country_list,
@@ -306,10 +366,12 @@ class WikidataClient:
             country_prop=P.COUNTRY,
             coords_prop=P.COORDINATES,
             population_prop=P.POPULATION,
+            order_direction=order_direction,
             limit=limit,
+            offset=offset,
         )
 
         logger.info(
-            f"Querying places in {len(countries)} countries (multilingual), limit={limit}"
+            f"Querying places in {len(countries)} countries (multilingual), limit={limit}, offset={offset}"
         )
         return self.query(query)
