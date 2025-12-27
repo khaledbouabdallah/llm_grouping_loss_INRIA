@@ -39,14 +39,45 @@ class WikipediaClient:
         """
         Get Wikipedia page content with metadata
 
+        Strategy:
+        1. Try exact entity name first (without auto_suggest to avoid bugs)
+        2. If that fails, search and validate result is relevant
+        3. Handle disambiguation by trying first option
+
         Returns:
             Dict with 'title', 'content', 'url', 'summary', 'metadata' or None if not found
         """
         self._rate_limit()
 
+        # CRITICAL: Set language before EVERY request (wikipedia module uses global state)
+        wikipedia.set_lang(self.language)
+
         for attempt in range(max_retries):
             try:
-                page = wikipedia.page(entity_name, auto_suggest=auto_suggest)
+                # Strategy 1: Try exact entity name first (no auto_suggest to avoid "Koller"->"killer" bug)
+                try:
+                    page = wikipedia.page(entity_name, auto_suggest=False)
+                except wikipedia.exceptions.PageError:
+                    # Strategy 2: If exact name fails, search and validate relevance
+                    search_results = wikipedia.search(entity_name, results=3)
+                    if not search_results:
+                        logger.warning(f"Page not found: '{entity_name}'")
+                        return None
+
+                    # Find first search result that's actually related to the query
+                    exact_title = None
+                    for result in search_results:
+                        if self._is_relevant_result(entity_name, result):
+                            exact_title = result
+                            break
+
+                    if not exact_title:
+                        logger.warning(
+                            f"No relevant Wikipedia page found for '{entity_name}' (search returned: {search_results[0]})"
+                        )
+                        return None
+
+                    page = wikipedia.page(exact_title, auto_suggest=False)
 
                 # Extract metadata
                 metadata = self._extract_metadata(
@@ -110,6 +141,36 @@ class WikipediaClient:
                     return None
 
         return None
+
+    def _is_relevant_result(self, query: str, result: str) -> bool:
+        """
+        Check if a search result is relevant to the query
+
+        Simple heuristic: Check if significant words from query appear in result
+        """
+        # Normalize and split query into words
+        query_lower = (
+            query.lower().replace("á", "a").replace("é", "e").replace("í", "i")
+        )
+        query_lower = query_lower.replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        query_words = set(query_lower.split())
+
+        # Remove very short words (articles, prepositions)
+        query_words = {w for w in query_words if len(w) > 2}
+
+        # Normalize result
+        result_lower = (
+            result.lower().replace("á", "a").replace("é", "e").replace("í", "i")
+        )
+        result_lower = (
+            result_lower.replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        )
+
+        # Check if any significant word from query is in result
+        matches = sum(1 for word in query_words if word in result_lower)
+
+        # Need at least one significant word match
+        return matches > 0
 
     def _extract_metadata(self, content: str, title: str, summary: str) -> Dict:
         """
@@ -175,6 +236,7 @@ class WikipediaClient:
     def get_summary(self, entity_name: str, sentences: int = 3) -> Optional[str]:
         """Get Wikipedia summary (first few sentences)"""
         self._rate_limit()
+        wikipedia.set_lang(self.language)  # Ensure correct language
 
         try:
             summary = wikipedia.summary(entity_name, sentences=sentences)
@@ -187,6 +249,7 @@ class WikipediaClient:
     def search(self, query: str, results: int = 10) -> list:
         """Search Wikipedia"""
         self._rate_limit()
+        wikipedia.set_lang(self.language)  # Ensure correct language
 
         try:
             search_results = wikipedia.search(query, results=results)
@@ -214,6 +277,7 @@ class WikipediaClient:
             Dict with page data or None if not found
         """
         self._rate_limit()
+        wikipedia.set_lang(self.language)  # Ensure correct language
 
         for attempt in range(max_retries):
             try:

@@ -20,7 +20,13 @@ logger = logging.getLogger(__name__)
 # Initialize clients
 db = EntityDatabase("data/entities.db")
 wikidata = WikidataClient(rate_limit_delay=0.1)  # Fast since labels in SPARQL
-wikipedia = WikipediaClient(language="en", rate_limit_delay=0.1)
+
+# Create separate Wikipedia clients for each language to avoid API bugs
+wikipedia_clients = {
+    "en": WikipediaClient(language="en", rate_limit_delay=0.1),
+    "fr": WikipediaClient(language="fr", rate_limit_delay=0.1),
+    "ar": WikipediaClient(language="ar", rate_limit_delay=0.1),
+}
 
 
 def has_complete_labels(entity, entity_type_key="person"):
@@ -44,7 +50,7 @@ def has_complete_labels(entity, entity_type_key="person"):
 
 def collect_people_for_country(
     country_code: str, country_name: str, culture_group: str, limit: int = 10000
-):
+) -> int:
     """
     Collect people for a single country with pre-filtering
     """
@@ -238,23 +244,47 @@ def collect_people_for_country(
             # Fetch Wikipedia texts
             for lang in ["en", "fr", "ar"]:
                 lang_label = person.get(f"personLabel_{lang}")
+                logger.info(
+                    f"Attempting to fetch {lang} Wikipedia for '{lang_label}' (entity: {wikidata_id})"
+                )
+
                 if lang_label:
                     try:
-                        wiki_text = wikipedia.fetch_wikipedia_text(lang_label, lang)
-                        if wiki_text:
+                        # Use language-specific client to avoid API bugs
+                        wiki_client = wikipedia_clients[lang]
+                        logger.info(
+                            f"Using {lang} Wikipedia client (language: {wiki_client.language})"
+                        )
+
+                        wiki_page = wiki_client.get_page(lang_label)
+
+                        if wiki_page:
+                            logger.info(
+                                f"Successfully fetched {lang} Wikipedia page: {wiki_page['title']}"
+                            )
                             db.add_wikipedia_text(
                                 entity_id=entity_id,
                                 language=lang,
-                                title=wiki_text["title"],
-                                summary=wiki_text["summary"],
-                                content=wiki_text["content"],
-                                url=wiki_text["url"],
-                                text_length_chars=wiki_text["text_length_chars"],
-                                text_length_words=wiki_text["text_length_words"],
-                                num_sections=wiki_text["num_sections"],
+                                title=wiki_page["title"],
+                                summary=wiki_page["summary"],
+                                content=wiki_page["content"],
+                                url=wiki_page["url"],
+                                text_length_chars=wiki_page["metadata"][
+                                    "text_length_chars"
+                                ],
+                                text_length_words=wiki_page["metadata"][
+                                    "text_length_words"
+                                ],
+                                num_sections=wiki_page["metadata"]["num_sections"],
+                            )
+                        else:
+                            logger.warning(
+                                f"get_page() returned None for '{lang_label}' in {lang}"
                             )
                     except Exception as e:
-                        logger.info(f"No {lang} Wikipedia sitelink for {wikidata_id}")
+                        logger.error(
+                            f"Exception fetching {lang} Wikipedia for '{lang_label}': {e}"
+                        )
                         wiki_errors += 1
 
             stored_count += 1

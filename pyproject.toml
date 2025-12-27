@@ -3,7 +3,7 @@ name = "llm-grouping-loss-inria"
 version = "0.1.0"
 description = "LLM Grouping Loss Analysis - Measuring confidence calibration bias across entity clusters"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26.0",
     "pandas>=2.1.0",

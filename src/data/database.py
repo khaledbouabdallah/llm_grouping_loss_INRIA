@@ -8,6 +8,7 @@ import json
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import logging
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -659,6 +660,194 @@ class EntityDatabase:
         if self.conn:
             self.conn.close()
             logger.info("Database connection closed")
+
+    def export_entities_for_analysis(
+        self, entity_type: str = None, culture: str = None
+    ) -> pd.DataFrame:
+        """
+        Export entities with flattened metadata as DataFrame for analysis.
+
+        Args:
+            entity_type: Optional filter by entity type
+            culture: Optional filter by culture
+
+        Returns:
+            DataFrame with columns: id, wikidata_id, type, culture, country, created_at, plus metadata columns
+        """
+        cursor = self.conn.cursor()
+
+        # Get all entities with filters
+        entities = self.get_all_entities(entity_type=entity_type, culture=culture)
+
+        if not entities:
+            return pd.DataFrame()
+
+        # Convert to list of dicts for easier processing
+        data = []
+        for entity in entities:
+            row = dict(entity)
+            # Get all metadata for this entity
+            metadata = self.get_metadata(entity["id"])
+            row.update(metadata)  # Add metadata as columns
+            data.append(row)
+
+        df = pd.DataFrame(data)
+        logger.info(f"Exported {len(df)} entities for analysis")
+        return df
+
+    def export_entities_with_text(
+        self, language: str = "en", entity_type: str = None
+    ) -> pd.DataFrame:
+        """
+        Export entities with Wikipedia text in specified language.
+
+        Args:
+            language: Language code (default: 'en')
+            entity_type: Optional filter by entity type
+
+        Returns:
+            DataFrame with columns: id, wikidata_id, type, culture, country, created_at,
+                                    label, title, summary, content, url, text_length_chars,
+                                    text_length_words, num_sections, fetched_at, plus metadata columns
+        """
+        cursor = self.conn.cursor()
+
+        # Get all entities with Wikipedia text in specified language
+        entities = self.get_entities_with_wikipedia(
+            language=language, entity_type=entity_type
+        )
+
+        if not entities:
+            return pd.DataFrame()
+
+        data = []
+        for entity in entities:
+            row = dict(entity)
+
+            # Get label for this language
+            labels = self.get_entity_labels(entity["id"])
+            row["label"] = labels.get(language)
+
+            # Get Wikipedia text for this language
+            wikipedia_texts = self.get_wikipedia_texts(entity["id"])
+            if language in wikipedia_texts:
+                wiki_text = wikipedia_texts[language]
+                row["title"] = wiki_text.get("title")
+                row["summary"] = wiki_text.get("summary")
+                row["content"] = wiki_text.get("content")
+                row["url"] = wiki_text.get("url")
+            else:
+                row["title"] = None
+                row["summary"] = None
+                row["content"] = None
+                row["url"] = None
+
+            # Get Wikipedia metadata
+            cursor.execute(
+                "SELECT text_length_chars, text_length_words, num_sections, fetched_at FROM wikipedia_texts WHERE entity_id = ? AND language = ?",
+                (entity["id"], language),
+            )
+            wiki_meta = cursor.fetchone()
+            if wiki_meta:
+                row["text_length_chars"] = wiki_meta["text_length_chars"]
+                row["text_length_words"] = wiki_meta["text_length_words"]
+                row["num_sections"] = wiki_meta["num_sections"]
+                row["fetched_at"] = wiki_meta["fetched_at"]
+            else:
+                row["text_length_chars"] = None
+                row["text_length_words"] = None
+                row["num_sections"] = None
+                row["fetched_at"] = None
+
+            # Get metadata
+            metadata = self.get_metadata(entity["id"])
+            row.update(metadata)
+
+            data.append(row)
+
+        df = pd.DataFrame(data)
+        logger.info(f"Exported {len(df)} entities with {language} Wikipedia text")
+        return df
+
+    def export_entities_with_all_languages(
+        self, languages: List[str] = None, entity_type: str = None
+    ) -> pd.DataFrame:
+        """
+        Export entities with multilingual labels and Wikipedia text.
+        Creates columns for each language: label_{lang}, title_{lang}, summary_{lang}, content_{lang}, url_{lang}, etc.
+
+        Args:
+            languages: List of language codes (default: ['en', 'fr', 'ar'])
+            entity_type: Optional filter by entity type
+
+        Returns:
+            DataFrame with entity info, metadata, and language-specific text columns
+        """
+        if languages is None:
+            languages = ["en", "fr", "ar"]
+
+        cursor = self.conn.cursor()
+
+        # Get all entities
+        entities = self.get_all_entities(entity_type=entity_type)
+
+        if not entities:
+            return pd.DataFrame()
+
+        data = []
+        for entity in entities:
+            row = dict(entity)
+
+            # Add labels for each language
+            labels = self.get_entity_labels(entity["id"])
+            for lang in languages:
+                row[f"label_{lang}"] = labels.get(lang)
+
+            # Add Wikipedia text for each language
+            wikipedia_texts = self.get_wikipedia_texts(entity["id"])
+            for lang in languages:
+                if lang in wikipedia_texts:
+                    wiki_text = wikipedia_texts[lang]
+                    row[f"title_{lang}"] = wiki_text.get("title")
+                    row[f"summary_{lang}"] = wiki_text.get("summary")
+                    row[f"content_{lang}"] = wiki_text.get("content")
+                    row[f"url_{lang}"] = wiki_text.get("url")
+                else:
+                    row[f"title_{lang}"] = None
+                    row[f"summary_{lang}"] = None
+                    row[f"content_{lang}"] = None
+                    row[f"url_{lang}"] = None
+
+            # Get Wikipedia metadata for each language
+            cursor.execute(
+                "SELECT language, text_length_chars, text_length_words, num_sections, fetched_at FROM wikipedia_texts WHERE entity_id = ?",
+                (entity["id"],),
+            )
+            for wiki_meta in cursor.fetchall():
+                lang = wiki_meta["language"]
+                if lang in languages:
+                    row[f"text_length_chars_{lang}"] = wiki_meta["text_length_chars"]
+                    row[f"text_length_words_{lang}"] = wiki_meta["text_length_words"]
+                    row[f"num_sections_{lang}"] = wiki_meta["num_sections"]
+                    row[f"fetched_at_{lang}"] = wiki_meta["fetched_at"]
+
+            # Add missing language metadata columns with None
+            for lang in languages:
+                if f"text_length_chars_{lang}" not in row:
+                    row[f"text_length_chars_{lang}"] = None
+                    row[f"text_length_words_{lang}"] = None
+                    row[f"num_sections_{lang}"] = None
+                    row[f"fetched_at_{lang}"] = None
+
+            # Get metadata
+            metadata = self.get_metadata(entity["id"])
+            row.update(metadata)
+
+            data.append(row)
+
+        df = pd.DataFrame(data)
+        logger.info(f"Exported {len(df)} entities with {languages} text")
+        return df
 
     def __enter__(self):
         return self
