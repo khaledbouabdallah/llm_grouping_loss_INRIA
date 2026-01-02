@@ -103,7 +103,7 @@ class EntityDatabase:
         """
         )
 
-        # Questions table
+        # Questions table - UPDATED with options and correct_answer
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS questions (
@@ -114,6 +114,8 @@ class EntityDatabase:
                 question_text TEXT NOT NULL,
                 ground_truth TEXT NOT NULL,
                 property TEXT NOT NULL,
+                options TEXT,
+                correct_answer TEXT,
                 FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
                 UNIQUE(entity_id, language, question_type)
             )
@@ -150,6 +152,17 @@ class EntityDatabase:
             cursor.execute(
                 "ALTER TABLE wikipedia_texts ADD COLUMN num_sections INTEGER"
             )
+
+        # Check if questions table needs options and correct_answer columns (for existing databases)
+        cursor.execute("PRAGMA table_info(questions)")
+        question_columns = [row[1] for row in cursor.fetchall()]
+
+        if "options" not in question_columns:
+            cursor.execute("ALTER TABLE questions ADD COLUMN options TEXT")
+            logger.info("Added 'options' column to questions table")
+        if "correct_answer" not in question_columns:
+            cursor.execute("ALTER TABLE questions ADD COLUMN correct_answer TEXT")
+            logger.info("Added 'correct_answer' column to questions table")
 
         # Create indexes
         cursor.execute(
@@ -338,6 +351,8 @@ class EntityDatabase:
         question_text: str,
         ground_truth: str,
         property_code: str,
+        options: str = None,
+        correct_answer: str = None,
     ) -> bool:
         """Add question to database, returns False if duplicate"""
         cursor = self.conn.cursor()
@@ -345,8 +360,8 @@ class EntityDatabase:
         try:
             cursor.execute(
                 """
-                INSERT INTO questions (entity_id, language, question_type, question_text, ground_truth, property)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO questions (entity_id, language, question_type, question_text, ground_truth, property, options, correct_answer)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     entity_id,
@@ -355,6 +370,8 @@ class EntityDatabase:
                     question_text,
                     ground_truth,
                     property_code,
+                    options,
+                    correct_answer,
                 ),
             )
             self.conn.commit()
@@ -422,6 +439,13 @@ class EntityDatabase:
         """Get entity by Wikidata ID"""
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM entities WHERE wikidata_id = ?", (wikidata_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_entity_by_id(self, entity_id: int) -> Optional[Dict]:
+        """Get entity by internal database ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM entities WHERE id = ?", (entity_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -621,6 +645,81 @@ class EntityDatabase:
         if entity_type:
             query += " AND e.type = ?"
             params.append(entity_type)
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_entities_for_distractors(
+        self,
+        culture: str,
+        exclude_entity_ids: List[int],
+        exclude_country: str = None,
+        min_birth_year: int = None,
+        max_birth_year: int = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        """
+        Get entities suitable as distractors for multiple choice questions
+
+        Args:
+            culture: Culture group (Western, Arabic, Asian, etc.)
+            exclude_entity_ids: List of entity IDs to exclude
+            exclude_country: Country to exclude (don't use same country)
+            min_birth_year: Minimum birth year (for birth_date questions)
+            max_birth_year: Maximum birth year (for birth_date questions)
+            limit: Maximum number of results
+
+        Returns:
+            List of entity dicts
+        """
+        cursor = self.conn.cursor()
+
+        # Build query with filters
+        query = """
+            SELECT DISTINCT e.id, e.wikidata_id, e.type, e.culture, e.country
+            FROM entities e
+            WHERE e.culture = ?
+            AND e.type = 'person'
+        """
+        params = [culture]
+
+        # Exclude specific entity IDs
+        if exclude_entity_ids:
+            placeholders = ",".join(["?"] * len(exclude_entity_ids))
+            query += f" AND e.id NOT IN ({placeholders})"
+            params.extend(exclude_entity_ids)
+
+        # Exclude same country
+        if exclude_country:
+            query += " AND e.country != ?"
+            params.append(exclude_country)
+
+        # Filter by birth year range (requires join with metadata)
+        if min_birth_year is not None and max_birth_year is not None:
+            query += """
+                AND e.id IN (
+                    SELECT entity_id FROM entity_metadata
+                    WHERE metadata_key = 'birth_year'
+                    AND CAST(metadata_value AS INTEGER) >= ?
+                    AND CAST(metadata_value AS INTEGER) <= ?
+                )
+            """
+            params.extend([min_birth_year, max_birth_year])
+
+        # Only entities with all Wikipedia
+        query += """
+            AND (
+                SELECT COUNT(DISTINCT w.language)
+                FROM wikipedia_texts w
+                WHERE w.entity_id = e.id
+                AND w.language IN ('en', 'fr', 'ar')
+            ) = 3
+        """
+
+        # Randomize order to get diverse distractors (important for nationality questions)
+        query += " ORDER BY RANDOM()"
+        query += " LIMIT ?"
+        params.append(limit)
 
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]

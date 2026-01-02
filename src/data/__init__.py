@@ -20,6 +20,8 @@ from .question_templates import (
     get_required_properties,
     generate_question,
 )
+
+from .question_generator import MultipleChoiceQuestionGenerator
 from .database import EntityDatabase
 from .wikidata_client import WikidataClient
 from .wikipedia_client import WikipediaClient
@@ -42,4 +44,5 @@ __all__ = [
     "EntityDatabase",
     "WikidataClient",
     "WikipediaClient",
+    "MultipleChoiceQuestionGenerator",
 ]
