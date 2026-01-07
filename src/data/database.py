@@ -502,6 +502,22 @@ class EntityDatabase:
 
         return facts
 
+    def get_fact_label(self, fact_value_url: str, language: str) -> Optional[str]:
+        """Get the label for a fact value (e.g., nationality URL) in a specific language"""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT fl.label
+            FROM fact_labels fl
+            JOIN facts f ON fl.fact_id = f.id
+            WHERE f.value = ? AND fl.language = ?
+            LIMIT 1
+            """,
+            (fact_value_url, language),
+        )
+        row = cursor.fetchone()
+        return row["label"] if row else None
+
     def get_entity_questions(self, entity_id: int, language: str = None) -> List[Dict]:
         """Get all questions for an entity, optionally filtered by language"""
         cursor = self.conn.cursor()
@@ -514,6 +530,12 @@ class EntityDatabase:
         else:
             cursor.execute("SELECT * FROM questions WHERE entity_id = ?", (entity_id,))
 
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_all_questions(self) -> List[Dict]:
+        """Get all questions from the database"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM questions")
         return [dict(row) for row in cursor.fetchall()]
 
     def get_all_entities(
@@ -657,6 +679,7 @@ class EntityDatabase:
         min_birth_year: int = None,
         max_birth_year: int = None,
         limit: int = 100,
+        entity_pool: List[int] = None,
     ) -> List[Dict]:
         """
         Get entities suitable as distractors for multiple choice questions
@@ -668,6 +691,8 @@ class EntityDatabase:
             min_birth_year: Minimum birth year (for birth_date questions)
             max_birth_year: Maximum birth year (for birth_date questions)
             limit: Maximum number of results
+            entity_pool: Optional list of entity IDs to restrict search to.
+                        If provided, only entities in this pool will be considered.
 
         Returns:
             List of entity dicts
@@ -682,6 +707,12 @@ class EntityDatabase:
             AND e.type = 'person'
         """
         params = [culture]
+
+        # Restrict to entity pool if provided
+        if entity_pool:
+            placeholders = ",".join(["?"] * len(entity_pool))
+            query += f" AND e.id IN ({placeholders})"
+            params.extend(entity_pool)
 
         # Exclude specific entity IDs
         if exclude_entity_ids:

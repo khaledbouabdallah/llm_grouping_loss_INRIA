@@ -51,12 +51,16 @@ class TextEmbedder:
         if self.model is None:
             self.load_model()
 
+        # E5 expects task prefixes
+        texts = [f"query: {t}" for t in texts]
+
         logger.info(f"Encoding {len(texts)} texts...")
         embeddings = self.model.encode(
             texts,
             batch_size=batch_size,
             show_progress_bar=show_progress,
             convert_to_numpy=True,
+            normalize_embeddings=True,
         )
 
         logger.info(f"Generated embeddings shape: {embeddings.shape}")
@@ -76,6 +80,7 @@ def save_embeddings(
     language: str,
     model_name: str,
     save_dir: Path,
+    text_type: str = "summary",
     metadata: Optional[Dict] = None,
 ):
     """
@@ -87,14 +92,15 @@ def save_embeddings(
         language: Language code
         model_name: Model name used for embeddings
         save_dir: Directory to save embeddings
+        text_type: Type of text used ('summary' or 'content')
         metadata: Optional metadata dict
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create filename
+    # Create filename with text_type
     model_slug = model_name.replace("/", "_")
-    filename = f"embeddings_{language}_{model_slug}.pkl"
+    filename = f"embeddings_{language}_{text_type}_{model_slug}.pkl"
     filepath = save_dir / filename
 
     # Prepare data
@@ -103,6 +109,7 @@ def save_embeddings(
         "entity_ids": entity_ids,
         "language": language,
         "model_name": model_name,
+        "text_type": text_type,
         "shape": embeddings.shape,
         "metadata": metadata or {},
     }
@@ -117,7 +124,7 @@ def save_embeddings(
 
 
 def load_cached_embeddings(
-    language: str, model_name: str, save_dir: Path
+    language: str, model_name: str, save_dir: Path, text_type: str = "summary"
 ) -> Optional[Dict]:
     """
     Load cached embeddings if they exist
@@ -126,13 +133,14 @@ def load_cached_embeddings(
         language: Language code
         model_name: Model name
         save_dir: Directory where embeddings are saved
+        text_type: Type of text used ('summary' or 'content')
 
     Returns:
         Dict with embeddings and metadata, or None if not found
     """
     save_dir = Path(save_dir)
     model_slug = model_name.replace("/", "_")
-    filename = f"embeddings_{language}_{model_slug}.pkl"
+    filename = f"embeddings_{language}_{text_type}_{model_slug}.pkl"
     filepath = save_dir / filename
 
     if not filepath.exists():
@@ -173,6 +181,7 @@ def get_embedding_cache_info(save_dir: Path) -> List[Dict]:
                 "filename": filepath.name,
                 "language": data.get("language"),
                 "model_name": data.get("model_name"),
+                "text_type": data.get("text_type", "unknown"),
                 "shape": data.get("shape"),
                 "num_entities": len(data.get("entity_ids", [])),
                 "size_mb": filepath.stat().st_size / (1024 * 1024),

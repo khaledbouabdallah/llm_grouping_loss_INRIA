@@ -20,21 +20,21 @@ PEOPLE_QUESTIONS = {
         "property": P.BIRTH_PLACE,
         "required": True,
     },
-    "death_date": {
-        "template": "When did {name} die?",
-        "property": P.DEATH_DATE,
-        "required": False,  # Not everyone is dead
-    },
+    # "death_date": {
+    #     "template": "When did {name} die?",
+    #     "property": P.DEATH_DATE,
+    #     "required": False,  # Not everyone is dead
+    # },
     "nationality": {
         "template": "What is {name}'s nationality?",
         "property": P.NATIONALITY,
         "required": True,
     },
-    "occupation": {
-        "template": "What is {name}'s occupation?",
-        "property": P.OCCUPATION,
-        "required": True,
-    },
+    # "occupation": {
+    #     "template": "What is {name}'s occupation?",
+    #     "property": P.OCCUPATION,
+    #     "required": True,
+    # },
 }
 
 DISCOVERY_QUESTIONS = {
